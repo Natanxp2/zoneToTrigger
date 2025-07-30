@@ -1,4 +1,4 @@
-﻿using System.Formats.Asn1;
+﻿using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -7,6 +7,8 @@ namespace zoneToTrigger;
 class Program
 {
     public static string filepath = string.Empty;
+    public static string triggersType = string.Empty;
+    public static Dictionary<string, StringBuilder> triggers = [];
 
     public static List<Region> checkpoints = [];
     public static List<Region> cancels = [];
@@ -14,10 +16,30 @@ class Program
     {
         if (args.Length == 0)
         {
-            Console.WriteLine("File not provided");
+            string helpMessage = @"Provide the name of a configuration file followed by a path to the .json file
+
+Example 1: ./zoneToTrigger rj test.json
+Example 2: zoneToTrigger.exe df.ini ./zones/test.json
+            
+.ini file must be present in the executable directory to be loaded, providing the extension is not required";
+            Console.WriteLine(helpMessage);
             return;
         }
+        if (args.Length == 1)
+            triggersType = AppContext.BaseDirectory + "rj.ini";
+        else
+        {
+            triggersType = Directory.EnumerateFiles(AppContext.BaseDirectory)
+                                .FirstOrDefault(f => Path.GetFileName(f).StartsWith(args[0], StringComparison.OrdinalIgnoreCase));
+        }
+        if (!File.Exists(triggersType))
+        {
+            Console.WriteLine($"Configuration file {args[0]} doesn't exist");
+            return;
+        }
+
         filepath = args[^1];
+        triggers = ParseIni(triggersType);
 
         if (!File.Exists(filepath) || !filepath.EndsWith(".json"))
         {
@@ -50,9 +72,20 @@ class Program
 
                 checkpoints.RemoveAt(0);
             }
+            else
+            {
+                Console.WriteLine("No checkpoints detected!");
+                Environment.Exit(1);
+            }
 
             // Extract and deserialize cancels
-            var cancelsJson = segment.GetProperty("cancel").GetRawText();
+            string cancelsJson = string.Empty;
+            try
+            {
+                cancelsJson = segment.GetProperty("cancel").GetRawText();
+            }
+            catch { }
+
             if (!string.IsNullOrEmpty(cancelsJson))
             {
                 var cancelsArray = JsonDocument.Parse(cancelsJson).RootElement.EnumerateArray();
@@ -75,7 +108,7 @@ class Program
         int i = 0;
         foreach (var checkpoint in checkpoints)
         {
-            checkpoint.targetname = $"limit_rockets_{i}_created_by_tools";
+            checkpoint.targetname = $"trigger_checkpoint_{i}_created_by_tools";
             checkpoint.GetValues();
             i++;
         }
@@ -83,7 +116,7 @@ class Program
         i = 0;
         foreach (var cancel in cancels)
         {
-            cancel.targetname = $"infinite_rockets_{i}_created_by_tools";
+            cancel.targetname = $"trigger_cancel_{i}_created_by_tools";
             cancel.GetValues();
             i++;
         }
@@ -97,26 +130,51 @@ class Program
         string logicOutput = "add:\n{\n";
         logicOutput += "\"classname\" \"logic_auto\"\n";
         logicOutput += "\"spawnflags\" \"0\"\n";
-        logicOutput += "\"targetname\" \"ammo_triggers_created_by_tools\"\n";
+        logicOutput += "\"targetname\" \"triggers_created_by_tools\"\n";
         logicOutput += $"\"origin\" \"{checkpoints[0].origin[0]} {checkpoints[0].origin[1]} {checkpoints[0].origin[2]}\"\n";
 
         using StreamWriter writer = new(cfgFilePath);
 
         foreach (var checkpoint in checkpoints)
         {
-            writer.Write(checkpoint.AddTrigger(limitAmmo: true));
+            writer.Write(checkpoint.AddTrigger("checkpoint"));
             logicOutput += checkpoint.AddLogicOutput();
         }
 
-        foreach (var cancel in cancels)
+
+        if (cancels.Count > 0)
         {
-            writer.Write(cancel.AddTrigger(limitAmmo: false));
-            logicOutput += cancel.AddLogicOutput();
+            foreach (var cancel in cancels)
+            {
+                writer.Write(cancel.AddTrigger("cancel"));
+                logicOutput += cancel.AddLogicOutput();
+            }
         }
 
         logicOutput += "}";
 
         writer.Write(logicOutput);
+    }
+
+    public static Dictionary<string, StringBuilder> ParseIni(string filepath)
+    {
+        string[] lines = File.ReadAllLines(filepath);
+        var sections = new Dictionary<string, StringBuilder>();
+        string current = null;
+
+        foreach (var line in lines)
+        {
+            if (line.StartsWith('[') && line.EndsWith(']'))
+            {
+                current = line.Trim('[', ']').ToLower();
+                sections[current] = new StringBuilder();
+            }
+            else if (current != null)
+            {
+                sections[current].AppendLine(line);
+            }
+        }
+        return sections;
     }
 }
 
@@ -174,25 +232,20 @@ public class Region
 
     }
 
-    public string AddTrigger(bool limitAmmo)
+    public string AddTrigger(string section)
     {
-        string s = "add:\n";
-        s += "{\n";
-        s += "\"classname\" \"trigger_multiple\"\n";
-        s += $"\"origin\" \"{origin![0]} {origin[1]} {origin[2]}\"\n";
-        s += $"\"spawnflags\" \"4097\"\n";
-        s += $"\"StartDisabled\" \"0\"\n";
+        string trigger = Program.triggers[section].ToString();
+        string s = $"\"origin\" \"{origin![0]} {origin[1]} {origin[2]}\"\n";
         s += $"\"targetname\" \"{targetname}\"\n";
-        s += $"\"wait\" \"{1}\"\n";
 
-        if (limitAmmo)
-            s += $"\"OnTrigger\" \"!activator,SetRockets,4,0,-1\"\n";
-        else
-            s += $"\"OnStartTouch\" \"!activator,SetRockets,-1,0,-1\"\n";
+        int index = trigger.LastIndexOf('}');
+        if (index != -1)
+        {
+            trigger = trigger.Insert(index, s);
+        }
 
-        s += "}\n";
+        return trigger;
 
-        return s;
     }
 
     public string AddLogicOutput()
