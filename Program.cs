@@ -6,7 +6,6 @@ namespace zoneToTrigger;
 
 class Program
 {
-    public static bool modify = false;
     public static string filepath = string.Empty;
 
     public static List<Region> checkpoints = [];
@@ -18,7 +17,6 @@ class Program
             Console.WriteLine("File not provided");
             return;
         }
-        modify = args.Contains("--modify") || args.Contains("-M");
         filepath = args[^1];
 
         if (!File.Exists(filepath) || !filepath.EndsWith(".json"))
@@ -134,9 +132,9 @@ public class Region
     public double Height { get; set; }
 
     //Helpers
-    public List<double>? origin;
-    public string? mins;
-    public string? maxs;
+    public List<double> origin = [];
+    public string mins = string.Empty;
+    public string maxs = string.Empty;
     public string targetname = string.Empty;
     public void GetValues()
     {
