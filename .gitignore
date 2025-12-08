@@ -1,0 +1,7 @@
+*
+
+!config/
+!Program.cs
+!README.md
+!zoneToTrigger.csproj
+!.gitignore

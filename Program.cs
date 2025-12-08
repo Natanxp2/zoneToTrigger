@@ -14,7 +14,7 @@ class Program
     public static List<Region> cancels = [];
     static void Main(string[] args)
     {
-        if (args.Length == 0)
+        if (args.Length < 2)
         {
             string helpMessage = @"Provide the name of a configuration file followed by a path to the .json file
 
@@ -25,13 +25,10 @@ Example 2: zoneToTrigger.exe df.ini ./zones/test.json
             Console.WriteLine(helpMessage);
             return;
         }
-        if (args.Length == 1)
-            triggersType = AppContext.BaseDirectory + "rj.ini";
-        else
-        {
-            triggersType = Directory.EnumerateFiles(AppContext.BaseDirectory)
-                                .FirstOrDefault(f => Path.GetFileName(f).StartsWith(args[0], StringComparison.OrdinalIgnoreCase));
-        }
+
+        triggersType = Directory.EnumerateFiles(Path.Combine(AppContext.BaseDirectory, "config"))
+                        .FirstOrDefault(f => Path.GetFileName(f).StartsWith(args[0], StringComparison.OrdinalIgnoreCase));
+
         if (!File.Exists(triggersType))
         {
             Console.WriteLine($"Configuration file {args[0]} doesn't exist");
@@ -106,9 +103,12 @@ Example 2: zoneToTrigger.exe df.ini ./zones/test.json
         }
 
         int i = 0;
+        string guid = Guid.NewGuid().ToString("N")[..10];
         foreach (var checkpoint in checkpoints)
         {
-            checkpoint.targetname = $"trigger_checkpoint_{i}_created_by_tools";
+
+            checkpoint.targetname = $"checkpoint_{i + 1}_{guid}";
+            checkpoint.zoneToTrigger = $"created_by_zoneToTrigger";
             checkpoint.GetValues();
             i++;
         }
@@ -116,38 +116,56 @@ Example 2: zoneToTrigger.exe df.ini ./zones/test.json
         i = 0;
         foreach (var cancel in cancels)
         {
-            cancel.targetname = $"trigger_cancel_{i}_created_by_tools";
+            cancel.targetname = $"cancel_{i + 1}_{guid}";
+            cancel.zoneToTrigger = $"created_by_zoneToTrigger";
             cancel.GetValues();
             i++;
         }
 
-        WriteToFile();
+        WriteToFile(guid);
     }
 
-    public static void WriteToFile()
+    public static void WriteToFile(string guid)
     {
         string cfgFilePath = filepath[..^5] + ".cfg";
         string logicOutput = "add:\n{\n";
         logicOutput += "\"classname\" \"logic_auto\"\n";
         logicOutput += "\"spawnflags\" \"0\"\n";
-        logicOutput += "\"targetname\" \"triggers_created_by_tools\"\n";
+        logicOutput += $"\"targetname\" \"{guid}\"\n";
+        logicOutput += "\"zoneToTrigger\" \"created_by_zoneToTrigger\"\n";
         logicOutput += $"\"origin\" \"{checkpoints[0].origin[0]} {checkpoints[0].origin[1]} {checkpoints[0].origin[2]}\"\n";
 
         using StreamWriter writer = new(cfgFilePath);
 
-        foreach (var checkpoint in checkpoints)
+        if (checkpoints.Count > 0)
         {
-            writer.Write(checkpoint.AddTrigger("checkpoint"));
-            logicOutput += checkpoint.AddLogicOutput();
+            if (!triggers.ContainsKey("checkpoint"))
+            {
+                Console.Error.WriteLine($"WARNING: Checkpoint zones are not defined.");
+            }
+            else
+            {
+                foreach (var checkpoint in checkpoints)
+                {
+                    writer.Write(checkpoint.AddTrigger("checkpoint"));
+                    logicOutput += checkpoint.AddLogicOutput();
+                }
+            }
         }
-
 
         if (cancels.Count > 0)
         {
-            foreach (var cancel in cancels)
+            if (!triggers.ContainsKey("cancel"))
             {
-                writer.Write(cancel.AddTrigger("cancel"));
-                logicOutput += cancel.AddLogicOutput();
+                Console.Error.WriteLine($"WARNING: Cancel zones are not defined.");
+            }
+            else
+            {
+                foreach (var cancel in cancels)
+                {
+                    writer.Write(cancel.AddTrigger("cancel"));
+                    logicOutput += cancel.AddLogicOutput();
+                }
             }
         }
 
@@ -194,6 +212,7 @@ public class Region
     public string mins = string.Empty;
     public string maxs = string.Empty;
     public string targetname = string.Empty;
+    public string zoneToTrigger = string.Empty;
     public void GetValues()
     {
         if (Points.Count != 4)
@@ -234,9 +253,16 @@ public class Region
 
     public string AddTrigger(string section)
     {
-        string trigger = Program.triggers[section].ToString();
+        if (!Program.triggers.TryGetValue(section, out var value))
+        {
+            Console.Error.WriteLine($"WARNING: trigger '{section}' is not defined.");
+            return "";
+        }
+        string trigger = value.ToString();
+
         string s = $"\"origin\" \"{origin![0]} {origin[1]} {origin[2]}\"\n";
         s += $"\"targetname\" \"{targetname}\"\n";
+        s += $"\"zoneToTrigger\" \"{zoneToTrigger}\"\n";
 
         int index = trigger.LastIndexOf('}');
         if (index != -1)
