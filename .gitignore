@@ -1,6 +1,7 @@
 *
 
 !config/
+!config/**/*
 !Program.cs
 !README.md
 !zoneToTrigger.csproj
