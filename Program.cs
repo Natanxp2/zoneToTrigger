@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Globalization;
 
 namespace zoneToTrigger;
 
@@ -133,7 +134,7 @@ Example 2: zoneToTrigger.exe df.ini ./zones/test.json
         logicOutput += "\"spawnflags\" \"0\"\n";
         logicOutput += $"\"targetname\" \"{guid}\"\n";
         logicOutput += "\"zoneToTrigger\" \"created_by_zoneToTrigger\"\n";
-        logicOutput += $"\"origin\" \"{checkpoints[0].origin[0]} {checkpoints[0].origin[1]} {checkpoints[0].origin[2]}\"\n";
+        logicOutput += FormattableString.Invariant($"\"origin\" \"{checkpoints[0].origin[0]} {checkpoints[0].origin[1]} {checkpoints[0].origin[2]}\"\n");
 
         using StreamWriter writer = new(cfgFilePath);
 
@@ -245,9 +246,8 @@ public class Region
         double halfSizeY = Math.Round(Math.Abs(point1[1] - point2[1]) / 2, 3);
         double halfSizeZ = Math.Round(Height / 2, 3);
 
-        maxs = "maxs " + halfSizeX + " " + halfSizeY + " " + halfSizeZ;
-
-        mins = "mins " + (halfSizeX * -1) + " " + (halfSizeY * -1) + " " + (halfSizeZ * -1);
+        maxs = FormattableString.Invariant($"maxs {halfSizeX} {halfSizeY} {halfSizeZ}");
+        mins = FormattableString.Invariant($"mins {-halfSizeX} {-halfSizeY} {-halfSizeZ}");
 
     }
 
@@ -260,7 +260,7 @@ public class Region
         }
         string trigger = value.ToString();
 
-        string s = $"\"origin\" \"{origin![0]} {origin[1]} {origin[2]}\"\n";
+        string s = FormattableString.Invariant($"\"origin\" \"{origin![0]} {origin[1]} {origin[2]}\"\n");
         s += $"\"targetname\" \"{targetname}\"\n";
         s += $"\"zoneToTrigger\" \"{zoneToTrigger}\"\n";
 
